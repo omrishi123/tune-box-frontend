@@ -43,7 +43,7 @@ export const getTrendingMusic = async () => {
     const response = await axios.get(`${BASE_URL}/search`, {
       params: {
         part: 'snippet',
-        q: 'latest hindi bhojpuri song',
+        q: 'latest trending song',
         type: 'video',
         maxResults: 20,
         videoCategoryId: '10',
