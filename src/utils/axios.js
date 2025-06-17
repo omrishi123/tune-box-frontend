@@ -9,13 +9,13 @@ const instance = axios.create({
   headers: {
     'Content-Type': 'application/json'
   },
-  withCredentials: false // Changed to false for Vercel deployment
+  withCredentials: true
 });
 
 instance.interceptors.response.use(
   response => response,
   error => {
-    console.error('API Error:', error.response?.data || error.message);
+    console.error('Request Error:', error);
     return Promise.reject(error);
   }
 );
