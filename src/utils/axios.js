@@ -9,13 +9,17 @@ const instance = axios.create({
   headers: {
     'Content-Type': 'application/json'
   },
-  withCredentials: true
+  withCredentials: true,
+  timeout: 10000
 });
 
 instance.interceptors.response.use(
   response => response,
   error => {
-    console.error('Request Error:', error);
+    if (error.response?.status === 500) {
+      console.error('Server Error:', error);
+      return Promise.resolve({ data: [] }); // Return empty array on server error
+    }
     return Promise.reject(error);
   }
 );
