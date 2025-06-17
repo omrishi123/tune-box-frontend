@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_KEY = 'AIzaSyB2s3phgPzBjllPqs_rRsquLHOdKlK6bm0';
+const API_KEY = 'AIzaSyBuJWn96b4l-4OuVk0GKkxviYsC6FaTJC8';
 const BASE_URL = 'https://www.googleapis.com/youtube/v3';
 
 export const searchVideos = async (query) => {
@@ -43,7 +43,7 @@ export const getTrendingMusic = async () => {
     const response = await axios.get(`${BASE_URL}/search`, {
       params: {
         part: 'snippet',
-        q: 'hindi songs latest',
+        q: 'latest trending song',
         type: 'video',
         maxResults: 20,
         videoCategoryId: '10',
