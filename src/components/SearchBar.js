@@ -43,12 +43,13 @@ const SearchBar = () => {
     setError(null);
     try {
       const response = await axios.get(`/api/youtube/search`, {
-        params: {
-          query: query
-        }
+        params: { query: query }
       });
       
-      // Format the response data to match the expected structure
+      if (!response.data || !Array.isArray(response.data)) {
+        throw new Error('Invalid response format');
+      }
+
       const formattedResults = response.data.map(item => ({
         id: { videoId: item.id },
         snippet: {
@@ -61,43 +62,31 @@ const SearchBar = () => {
       }));
 
       setResults(formattedResults);
+      setError(null);
     } catch (error) {
       console.error('Search error:', error);
-      if (error.response?.status === 429) {
-        setError('Search limit reached. Please try again later.');
-      } else {
-        setError('Failed to fetch search results. Please try again.');
-      }
+      setError('Failed to fetch search results. Please try again.');
+      setResults([]);
     } finally {
       setLoading(false);
     }
   };
 
   const handleSongSelect = (song) => {
+    if (!song?.id?.videoId) return;
+
     const newSong = {
       id: song.id.videoId,
-      videoId: song.id.videoId, // Add this line
+      videoId: song.id.videoId,
       title: song.snippet.title,
       thumbnail: song.snippet.thumbnails.default.url,
       artist: song.snippet.channelTitle
     };
     
-    // Add selected song and all subsequent results to queue
-    const newQueue = [
-      ...queue,
-      newSong,
-      ...results
-        .slice(results.findIndex(r => r.id.videoId === song.id.videoId) + 1)
-        .map(r => ({
-          id: r.id.videoId,
-          title: r.snippet.title,
-          thumbnail: r.snippet.thumbnails.default.url,
-          artist: r.snippet.channelTitle
-        }))
-    ];
-    
-    setQueue(newQueue);
     setCurrentSong(newSong);
+    setQueue([newSong]);
+    setResults([]);
+    setQuery('');
   };
 
   return (
