@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_KEY = 'AIzaSyCxIHwZ5QUPUr9CD6B-u6Pj7RZw6sQ6B4o';
+const API_KEY = 'AIzaSyATeAWo_f9rOY4wj0h-YnACaVR0PZy4uhM';
 const BASE_URL = 'https://www.googleapis.com/youtube/v3';
 
 export const searchVideos = async (query) => {
