@@ -41,24 +41,20 @@ const SearchBar = () => {
 
     setLoading(true);
     setError(null);
+    setResults([]);
+
     try {
-      const response = await axios.get('/api/youtube/search', {
-        params: { query: encodeURIComponent(query.trim()) },
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json'
-        }
-      });
+      const response = await axios.get(`/api/youtube/search?query=${encodeURIComponent(query.trim())}`);
       
       if (response.data && Array.isArray(response.data)) {
         const formattedResults = response.data.map(item => ({
           id: { videoId: item.id },
           snippet: {
-            title: item.title || 'Unknown Title',
+            title: item.title,
             thumbnails: {
-              default: { url: item.thumbnail || '' }
+              default: { url: item.thumbnail }
             },
-            channelTitle: item.artist || 'Unknown Artist'
+            channelTitle: item.artist
           }
         }));
         setResults(formattedResults);
@@ -67,13 +63,10 @@ const SearchBar = () => {
       }
     } catch (error) {
       console.error('Search error:', error);
-      if (error.response?.status === 500) {
-        setError('Server error. Please try again later.');
-      } else if (error.response?.status === 429) {
-        setError('Search limit reached. Please try again later.');
-      } else {
-        setError('Failed to fetch results. Please try again.');
-      }
+      const errorMessage = error.response?.data?.error || 
+                         error.response?.data?.details ||
+                         'Failed to fetch results. Please try again.';
+      setError(errorMessage);
       setResults([]);
     } finally {
       setLoading(false);
