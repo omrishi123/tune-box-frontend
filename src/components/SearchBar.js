@@ -42,32 +42,39 @@ const SearchBar = () => {
     setLoading(true);
     setError(null);
     try {
-      const response = await axios.get(`/api/youtube/search`, {
-        params: {
-          query: query
+      const response = await axios.get('/api/youtube/search', {
+        params: { query: encodeURIComponent(query.trim()) },
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json'
         }
       });
       
-      // Format the response data to match the expected structure
-      const formattedResults = response.data.map(item => ({
-        id: { videoId: item.id },
-        snippet: {
-          title: item.title,
-          thumbnails: {
-            default: { url: item.thumbnail }
-          },
-          channelTitle: item.artist
-        }
-      }));
-
-      setResults(formattedResults);
+      if (response.data && Array.isArray(response.data)) {
+        const formattedResults = response.data.map(item => ({
+          id: { videoId: item.id },
+          snippet: {
+            title: item.title || 'Unknown Title',
+            thumbnails: {
+              default: { url: item.thumbnail || '' }
+            },
+            channelTitle: item.artist || 'Unknown Artist'
+          }
+        }));
+        setResults(formattedResults);
+      } else {
+        throw new Error('Invalid response format');
+      }
     } catch (error) {
       console.error('Search error:', error);
-      if (error.response?.status === 429) {
+      if (error.response?.status === 500) {
+        setError('Server error. Please try again later.');
+      } else if (error.response?.status === 429) {
         setError('Search limit reached. Please try again later.');
       } else {
-        setError('Failed to fetch search results. Please try again.');
+        setError('Failed to fetch results. Please try again.');
       }
+      setResults([]);
     } finally {
       setLoading(false);
     }
