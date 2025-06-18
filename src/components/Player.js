@@ -218,7 +218,7 @@ const Player = () => {
   useEffect(() => {
     if (player) {
       player.addEventListener('onStateChange', (event) => {
-        // 0 is the value for ENDED state in YouTube API
+        // YouTube API: State 0 means video ended
         if (event.data === 0) {
           skipToNext();
         }

@@ -46,26 +46,20 @@ const SearchBar = () => {
         params: { query: query }
       });
       
-      if (!response.data || !Array.isArray(response.data)) {
-        throw new Error('Invalid response format');
+      if (response.data && Array.isArray(response.data)) {
+        const formattedResults = response.data.map(item => ({
+          id: { videoId: item.id },
+          snippet: {
+            title: item.title,
+            thumbnails: { default: { url: item.thumbnail } },
+            channelTitle: item.artist
+          }
+        }));
+        setResults(formattedResults);
       }
-
-      const formattedResults = response.data.map(item => ({
-        id: { videoId: item.id },
-        snippet: {
-          title: item.title,
-          thumbnails: {
-            default: { url: item.thumbnail }
-          },
-          channelTitle: item.artist
-        }
-      }));
-
-      setResults(formattedResults);
-      setError(null);
     } catch (error) {
       console.error('Search error:', error);
-      setError('Failed to fetch search results. Please try again.');
+      setError('Failed to fetch results. Please try again.');
       setResults([]);
     } finally {
       setLoading(false);
@@ -73,20 +67,34 @@ const SearchBar = () => {
   };
 
   const handleSongSelect = (song) => {
-    if (!song?.id?.videoId) return;
-
-    const newSong = {
+    // Find the index of selected song in results
+    const selectedIndex = results.findIndex(result => result.id.videoId === song.id.videoId);
+    
+    // Format the selected song
+    const selectedSong = {
       id: song.id.videoId,
       videoId: song.id.videoId,
       title: song.snippet.title,
       thumbnail: song.snippet.thumbnails.default.url,
       artist: song.snippet.channelTitle
     };
-    
-    setCurrentSong(newSong);
-    setQueue([newSong]);
-    setResults([]);
-    setQuery('');
+
+    // Format remaining songs in the queue (songs after the selected one)
+    const remainingQueue = results
+      .slice(selectedIndex + 1)
+      .map(item => ({
+        id: item.id.videoId,
+        videoId: item.id.videoId,
+        title: item.snippet.title,
+        thumbnail: item.snippet.thumbnails.default.url,
+        artist: item.snippet.channelTitle
+      }));
+
+    // Set current song and update queue with remaining songs
+    setCurrentSong(selectedSong);
+    setQueue([selectedSong, ...remainingQueue]);
+    setResults([]); // Clear search results after selection
+    setQuery(''); // Clear search query
   };
 
   return (

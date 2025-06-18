@@ -15,6 +15,18 @@ const Profile = () => {
   const navigate = useNavigate();
   const user = auth.currentUser;
 
+  const handlePlaySong = (song) => {
+    const formattedSong = {
+      id: song.videoId || song.id,
+      videoId: song.videoId || song.id,
+      title: song.title,
+      thumbnail: song.thumbnail,
+      artist: song.artist
+    };
+    setCurrentSong(formattedSong);
+    setQueue([formattedSong]);
+  };
+
   useEffect(() => {
     if (!user) return;
 
@@ -27,8 +39,8 @@ const Profile = () => {
         return {
           id: doc.id,
           ...data,
-          // Fix timestamp conversion
-          playedAt: data.playedAt?.toDate?.() || new Date()
+          videoId: data.videoId || data.id,
+          playedAt: data.playedAt?.toDate() || new Date()
         };
       });
       setHistory(historyData);
@@ -36,11 +48,6 @@ const Profile = () => {
 
     return () => unsubscribe();
   }, [user]);
-
-  const handlePlaySong = (song) => {
-    setCurrentSong(song);
-    setQueue([song]);
-  };
 
   const handleLogout = () => {
     signOut(auth);
