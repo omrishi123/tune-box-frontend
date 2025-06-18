@@ -51,17 +51,17 @@ const SearchBar = () => {
       }
 
       const formattedResults = response.data.map(item => ({
-        id: { videoId: item.id },
-        snippet: {
-          title: item.title,
-          thumbnails: {
-            default: { url: item.thumbnail }
-          },
-          channelTitle: item.artist
-        }
+        id: item.id,
+        videoId: item.id,
+        title: item.title,
+        thumbnail: item.thumbnail,
+        artist: item.artist,
+        type: 'search'
       }));
 
       setResults(formattedResults);
+      // Store search results in sessionStorage for queue management
+      sessionStorage.setItem('lastSearchResults', JSON.stringify(formattedResults));
       setError(null);
     } catch (error) {
       console.error('Search error:', error);
@@ -73,18 +73,37 @@ const SearchBar = () => {
   };
 
   const handleSongSelect = (song) => {
-    if (!song?.id?.videoId) return;
+    if (!song?.id) return;
 
     const newSong = {
-      id: song.id.videoId,
-      videoId: song.id.videoId,
-      title: song.snippet.title,
-      thumbnail: song.snippet.thumbnails.default.url,
-      artist: song.snippet.channelTitle
+      id: song.id,
+      videoId: song.videoId || song.id,
+      title: song.title,
+      thumbnail: song.thumbnail,
+      artist: song.artist,
+      type: 'search'
     };
     
+    // Get all search results and set as queue
+    const searchResults = results.map(result => ({
+      id: result.id,
+      videoId: result.videoId || result.id,
+      title: result.title,
+      thumbnail: result.thumbnail,
+      artist: result.artist,
+      type: 'search'
+    }));
+
+    // Find current song index and create queue with remaining songs
+    const currentIndex = searchResults.findIndex(s => s.id === song.id);
+    const newQueue = [
+      newSong,
+      ...searchResults.slice(currentIndex + 1),
+      ...searchResults.slice(0, currentIndex)
+    ];
+
     setCurrentSong(newSong);
-    setQueue([newSong]);
+    setQueue(newQueue);
     setResults([]);
     setQuery('');
   };
