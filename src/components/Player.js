@@ -104,36 +104,21 @@ const Player = () => {
 
   const skipToNext = useCallback((e) => {
     if (e) e.stopPropagation();
-    
-    // Get the current queue
     const currentIndex = queue.findIndex(song => song.id === currentSong?.id);
-    
-    if (currentIndex > -1 && queue.length > 0) {
-      // Calculate next index with wrap-around
-      const nextIndex = (currentIndex + 1) % queue.length;
-      const nextSong = queue[nextIndex];
-
-      if (nextSong) {
-        setCurrentSong(nextSong);
-        setIsPlaying(true);
-      }
+    if (currentIndex > -1 && currentIndex < queue.length - 1) {
+      const nextSong = queue[currentIndex + 1];
+      setCurrentSong(nextSong);
+      setIsPlaying(true);
     }
   }, [queue, currentSong, setCurrentSong, setIsPlaying]);
 
   const skipToPrevious = useCallback((e) => {
     if (e) e.stopPropagation();
-    
     const currentIndex = queue.findIndex(song => song.id === currentSong?.id);
-    
-    if (currentIndex > -1 && queue.length > 0) {
-      // Calculate previous index with wrap-around
-      const prevIndex = (currentIndex - 1 + queue.length) % queue.length;
-      const previousSong = queue[prevIndex];
-
-      if (previousSong) {
-        setCurrentSong(previousSong);
-        setIsPlaying(true);
-      }
+    if (currentIndex > 0) {
+      const previousSong = queue[currentIndex - 1];
+      setCurrentSong(previousSong);
+      setIsPlaying(true);
     }
   }, [queue, currentSong, setCurrentSong, setIsPlaying]);
 
@@ -233,7 +218,8 @@ const Player = () => {
   useEffect(() => {
     if (player) {
       player.addEventListener('onStateChange', (event) => {
-        if (event.data === 0) { // Video ended
+        // 0 is the value for ENDED state in YouTube API
+        if (event.data === 0) {
           skipToNext();
         }
       });
