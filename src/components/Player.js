@@ -1,14 +1,15 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import YouTube from 'react-youtube';
 import { useRecoilState } from 'recoil';
 import { IconButton, Box, Typography, Slider, Menu, MenuItem, ListItemText } from '@mui/material';
 import { PlayArrow, Pause, SkipNext, SkipPrevious, VolumeUp, Close as CloseIcon, PlaylistAdd } from '@mui/icons-material';
-import { currentSongState, playbackState, queueState } from '../atoms/playerAtoms';
+import { currentSongState, playbackState, queueState, currentTrackState, isPlayingState, currentIndexState } from '../atoms/playerAtoms';
 import styled from 'styled-components';
 import { formatTime } from '../utils/formatTime';
 import { db, auth } from '../config/firebase';
 import { collection, addDoc, serverTimestamp, onSnapshot, doc, updateDoc, arrayUnion } from 'firebase/firestore';
 import useResponsive from '../hooks/useResponsive';
+import axios from 'axios';
 
 const PlayerWrapper = styled.div`
   position: fixed;
@@ -50,6 +51,11 @@ const Player = () => {
   const [anchorEl, setAnchorEl] = useState(null);
   const [playlists, setPlaylists] = useState([]);
   const { isMobile } = useResponsive();
+  const audioRef = useRef(null);
+  const [currentTrack, setCurrentTrack] = useRecoilState(currentTrackState);
+  const [currentIndex, setCurrentIndex] = useRecoilState(currentIndexState);
+  const [audioUrl, setAudioUrl] = useState(null);
+  const [nextAudioUrl, setNextAudioUrl] = useState(null);
 
   const opts = {
     height: '0',
@@ -226,6 +232,86 @@ const Player = () => {
     }
   }, [player, skipToNext]);
 
+  const fetchAudioUrl = async (videoId) => {
+    try {
+      const response = await axios.get(`${process.env.REACT_APP_API_URL}/api/youtube/stream/${videoId}`);
+      return response.data.url;
+    } catch (error) {
+      console.error('Error fetching audio URL:', error);
+      return null;
+    }
+  };
+
+  // Pre-fetch next song URL
+  useEffect(() => {
+    const preloadNextTrack = async () => {
+      if (currentIndex < queue.length - 1) {
+        const nextTrack = queue[currentIndex + 1];
+        if (nextTrack && nextTrack.videoId) {
+          const url = await fetchAudioUrl(nextTrack.videoId);
+          setNextAudioUrl(url);
+        }
+      }
+    };
+
+    preloadNextTrack();
+  }, [currentIndex, queue]);
+
+  // Handle song ended event
+  useEffect(() => {
+    if (!audioRef.current) return;
+
+    const handleEnded = async () => {
+      if (currentIndex < queue.length - 1) {
+        const nextIndex = currentIndex + 1;
+        const nextTrack = queue[nextIndex];
+        
+        // Use pre-fetched URL
+        if (nextAudioUrl) {
+          setAudioUrl(nextAudioUrl);
+          setNextAudioUrl(null);
+          setCurrentTrack(nextTrack);
+          setCurrentIndex(nextIndex);
+          setIsPlaying(true);
+          
+          // Ensure audio plays in background
+          if (audioRef.current) {
+            const playPromise = audioRef.current.play();
+            if (playPromise !== undefined) {
+              playPromise.catch(error => {
+                console.error("Playback failed:", error);
+              });
+            }
+          }
+        }
+      }
+    };
+
+    audioRef.current.addEventListener('ended', handleEnded);
+    return () => {
+      if (audioRef.current) {
+        audioRef.current.removeEventListener('ended', handleEnded);
+      }
+    };
+  }, [currentIndex, queue, nextAudioUrl, setCurrentTrack, setCurrentIndex, setIsPlaying]);
+
+  // Update audio source when URL changes
+  useEffect(() => {
+    if (audioRef.current && audioUrl) {
+      audioRef.current.src = audioUrl;
+      if (isPlaying) {
+        audioRef.current.play();
+      }
+    }
+  }, [audioUrl, isPlaying]);
+
+  // Initial load of current track
+  useEffect(() => {
+    if (currentTrack?.videoId) {
+      fetchAudioUrl(currentTrack.videoId).then(url => setAudioUrl(url));
+    }
+  }, [currentTrack]);
+
   if (error) {
     return (
       <PlayerWrapper>
@@ -364,6 +450,7 @@ const Player = () => {
         }}
         onEnd={() => skipToNext()}
       />
+      <audio ref={audioRef} />
     </>
   );
 };

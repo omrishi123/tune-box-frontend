@@ -49,3 +49,18 @@ export const currentPlaylistState = atom({
   key: 'currentPlaylistState',
   default: null
 });
+
+export const currentTrackState = atom({
+  key: 'currentTrackState',
+  default: null,
+});
+
+export const isPlayingState = atom({
+  key: 'isPlayingState',
+  default: false,
+});
+
+export const currentIndexState = atom({
+  key: 'currentIndexState',
+  default: 0,
+});
