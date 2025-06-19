@@ -10,8 +10,6 @@ import { db, auth } from '../config/firebase';
 import { collection, addDoc, serverTimestamp, onSnapshot, doc, updateDoc, arrayUnion } from 'firebase/firestore';
 import useResponsive from '../hooks/useResponsive';
 import axios from 'axios';
-import { setupMediaSession, updateMediaSessionMetadata, updatePlaybackState } from '../utils/mediaSession';
-import audioContext from '../utils/audioContext';
 
 const PlayerWrapper = styled.div`
   position: fixed;
@@ -283,9 +281,7 @@ const Player = () => {
   useEffect(() => {
     if (!audioRef.current) return;
 
-    let isPreloading = false;
-
-    const handleTimeUpdate = async () => {
+    const handleTimeUpdate = () => {
       if (!audioRef.current) return;
       
       const currentTime = audioRef.current.currentTime;
@@ -294,27 +290,9 @@ const Player = () => {
       setCurrentTime(currentTime);
       setDuration(duration);
 
-      // Update media session
-      if ('mediaSession' in navigator) {
-        navigator.mediaSession.setPositionState({
-          duration,
-          playbackRate: 1,
-          position: currentTime
-        });
-      }
-
-      // Preload next track at 80%
-      if (!isPreloading && duration > 0 && (currentTime / duration) > 0.8) {
-        isPreloading = true;
-        if (currentIndex < queue.length - 1) {
-          const nextTrack = queue[currentIndex + 1];
-          if (nextTrack?.videoId) {
-            const nextUrl = await fetchAudioUrl(nextTrack.videoId);
-            if (nextUrl) {
-              await audioContext.preloadNext(nextUrl);
-            }
-          }
-        }
+      // Start preloading at 80% of current track
+      if (duration > 0 && (currentTime / duration) > 0.8) {
+        preloadNextTrack();
       }
     };
 
@@ -322,25 +300,21 @@ const Player = () => {
       if (currentIndex < queue.length - 1) {
         const nextIndex = currentIndex + 1;
         const nextTrack = queue[nextIndex];
-        
-        if (audioContext.nextBuffer) {
+        const nextUrl = audioUrlCacheRef.current.get(nextTrack.videoId) || 
+                       await fetchAudioUrl(nextTrack.videoId);
+
+        if (nextUrl) {
           setCurrentTrack(nextTrack);
           setCurrentIndex(nextIndex);
           setIsPlaying(true);
-          
-          audioContext.play(audioContext.nextBuffer);
-          audioContext.nextBuffer = null;
-          isPreloading = false;
-        } else {
-          const nextUrl = await fetchAudioUrl(nextTrack.videoId);
-          if (nextUrl) {
-            const buffer = await audioContext.loadAudio(nextUrl);
-            if (buffer) {
-              setCurrentTrack(nextTrack);
-              setCurrentIndex(nextIndex);
-              setIsPlaying(true);
-              audioContext.play(buffer);
-            }
+          setAudioUrl(nextUrl);
+
+          try {
+            audioRef.current.src = nextUrl;
+            await audioRef.current.play();
+            preloadNextTrack(); // Pre-fetch next track
+          } catch (error) {
+            console.error("Playback failed:", error);
           }
         }
       }
@@ -355,12 +329,7 @@ const Player = () => {
         audioRef.current.removeEventListener('ended', handleEnded);
       }
     };
-  }, [currentIndex, queue, setCurrentTrack, setCurrentIndex, setIsPlaying, fetchAudioUrl]);
-
-  // Update volume handling
-  useEffect(() => {
-    audioContext.setVolume(volume / 100);
-  }, [volume]);
+  }, [currentIndex, queue, setCurrentTrack, setCurrentIndex, setIsPlaying, preloadNextTrack, fetchAudioUrl]);
 
   // Handle page visibility changes
   useEffect(() => {
@@ -374,37 +343,6 @@ const Player = () => {
     
     document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-  }, [isPlaying]);
-
-  // Add Media Session setup
-  useEffect(() => {
-    if (player && currentSong) {
-      setupMediaSession(player, {
-        play: () => {
-          player.playVideo();
-          setIsPlaying(true);
-        },
-        pause: () => {
-          player.pauseVideo();
-          setIsPlaying(false);
-        },
-        next: skipToNext,
-        previous: skipToPrevious,
-        seekTo: (details) => {
-          if (details.seekTime !== undefined) {
-            player.seekTo(details.seekTime, true);
-          }
-        }
-      });
-
-      // Update metadata when song changes
-      updateMediaSessionMetadata(currentSong);
-    }
-  }, [player, currentSong, skipToNext, skipToPrevious]);
-
-  // Update playback state
-  useEffect(() => {
-    updatePlaybackState(isPlaying ? 'playing' : 'paused');
   }, [isPlaying]);
 
   if (error) {

@@ -1,15 +1,10 @@
 {
   "short_name": "TuneBox",
   "name": "TuneBox Music Player",
-  "description": "Modern music streaming application",
-  "display": "standalone",
-  "background_color": "#282828",
-  "theme_color": "#282828",
-  "start_url": "/",
   "icons": [
     {
       "src": "favicon.ico",
-      "sizes": "64x64",
+      "sizes": "64x64 32x32 24x24 16x16",
       "type": "image/x-icon"
     },
     {
@@ -23,13 +18,11 @@
       "sizes": "512x512"
     }
   ],
-  "shortcuts": [
-    {
-      "name": "Play Music",
-      "url": "/",
-      "icons": [{ "src": "logo192.png", "sizes": "192x192" }]
-    }
-  ],
-  "related_applications": [],
+  "start_url": ".",
+  "display": "standalone",
+  "theme_color": "#282828",
+  "background_color": "#282828",
+  "description": "A modern music streaming application",
+  "orientation": "any",
   "prefer_related_applications": false
 }
