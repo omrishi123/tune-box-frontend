@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import YouTube from 'react-youtube';
 import { useRecoilState } from 'recoil';
 import { IconButton, Box, Typography, Slider, Menu, MenuItem, ListItemText } from '@mui/material';
-import { PlayArrow, Pause, SkipNext, SkipPrevious, VolumeUp, Close as CloseIcon, PlaylistAdd } from '@mui/icons-material';
+import { PlayArrow, Pause, SkipNext, SkipPrevious, VolumeUp, Close as CloseIcon, PlaylistAdd, Headphones } from '@mui/icons-material';
 import { currentSongState, playbackState, queueState, currentTrackState, isPlayingState, currentIndexState } from '../atoms/playerAtoms';
 import styled from 'styled-components';
 import { formatTime } from '../utils/formatTime';
@@ -59,6 +59,8 @@ const Player = () => {
   const fetchingRef = useRef(false);
   const audioWorkerRef = useRef(null);
   const audioUrlCacheRef = useRef(new Map());
+  const [backgroundMode, setBackgroundMode] = useState(false);
+  const backgroundPlaybackRef = useRef(false);
 
   const opts = {
     height: '0',
@@ -297,25 +299,30 @@ const Player = () => {
     };
 
     const handleEnded = async () => {
-      if (currentIndex < queue.length - 1) {
+      if (currentIndex < queue.length - 1 && (backgroundMode || !document.hidden)) {
         const nextIndex = currentIndex + 1;
         const nextTrack = queue[nextIndex];
-        const nextUrl = audioUrlCacheRef.current.get(nextTrack.videoId) || 
-                       await fetchAudioUrl(nextTrack.videoId);
-
-        if (nextUrl) {
-          setCurrentTrack(nextTrack);
-          setCurrentIndex(nextIndex);
-          setIsPlaying(true);
-          setAudioUrl(nextUrl);
-
-          try {
-            audioRef.current.src = nextUrl;
-            await audioRef.current.play();
-            preloadNextTrack(); // Pre-fetch next track
-          } catch (error) {
-            console.error("Playback failed:", error);
+        
+        try {
+          // Force immediate loading of next track
+          const nextUrl = await fetchAudioUrl(nextTrack.videoId);
+          if (nextUrl) {
+            setCurrentTrack(nextTrack);
+            setCurrentIndex(nextIndex);
+            setIsPlaying(true);
+            setAudioUrl(nextUrl);
+            
+            if (audioRef.current) {
+              audioRef.current.src = nextUrl;
+              const playPromise = audioRef.current.play();
+              if (playPromise) {
+                await playPromise;
+                preloadNextTrack();
+              }
+            }
           }
+        } catch (error) {
+          console.error("Playback failed:", error);
         }
       }
     };
@@ -329,7 +336,7 @@ const Player = () => {
         audioRef.current.removeEventListener('ended', handleEnded);
       }
     };
-  }, [currentIndex, queue, setCurrentTrack, setCurrentIndex, setIsPlaying, preloadNextTrack, fetchAudioUrl]);
+  }, [currentIndex, queue, setCurrentTrack, setCurrentIndex, setIsPlaying, preloadNextTrack, fetchAudioUrl, backgroundMode]);
 
   // Handle page visibility changes
   useEffect(() => {
@@ -345,6 +352,20 @@ const Player = () => {
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
   }, [isPlaying]);
 
+  useEffect(() => {
+    if (backgroundMode) {
+      backgroundPlaybackRef.current = true;
+      // Request wake lock to prevent device sleep
+      try {
+        navigator.wakeLock?.request('screen');
+      } catch (err) {
+        console.log('Wake Lock not supported');
+      }
+    } else {
+      backgroundPlaybackRef.current = false;
+    }
+  }, [backgroundMode]);
+
   if (error) {
     return (
       <PlayerWrapper>
@@ -354,6 +375,12 @@ const Player = () => {
   }
 
   if (!currentSong) return null;
+
+  // Add background mode toggle
+  const toggleBackgroundMode = (e) => {
+    e.stopPropagation();
+    setBackgroundMode(!backgroundMode);
+  };
 
   return (
     <>
@@ -387,6 +414,17 @@ const Player = () => {
           </IconButton>
           <IconButton onClick={skipToNext}>
             <SkipNext />
+          </IconButton>
+          <IconButton 
+            onClick={toggleBackgroundMode}
+            sx={{ 
+              color: backgroundMode ? 'primary.main' : 'inherit',
+              '&:hover': {
+                color: backgroundMode ? 'primary.light' : 'inherit'
+              }
+            }}
+          >
+            <Headphones />
           </IconButton>
           <Typography variant="caption">
             {formatTime(currentTime)} / {formatTime(duration)}
