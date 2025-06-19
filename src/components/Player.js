@@ -10,6 +10,8 @@ import { db, auth } from '../config/firebase';
 import { collection, addDoc, serverTimestamp, onSnapshot, doc, updateDoc, arrayUnion } from 'firebase/firestore';
 import useResponsive from '../hooks/useResponsive';
 import axios from 'axios';
+import { setupMediaSession, updateMediaSessionMetadata, updatePlaybackState } from '../utils/mediaSession';
+import audioContext from '../utils/audioContext';
 
 const PlayerWrapper = styled.div`
   position: fixed;
@@ -55,7 +57,10 @@ const Player = () => {
   const [currentTrack, setCurrentTrack] = useRecoilState(currentTrackState);
   const [currentIndex, setCurrentIndex] = useRecoilState(currentIndexState);
   const [audioUrl, setAudioUrl] = useState(null);
-  const [nextAudioUrl, setNextAudioUrl] = useState(null);
+  const nextTrackUrlRef = useRef(null);
+  const fetchingRef = useRef(false);
+  const audioWorkerRef = useRef(null);
+  const audioUrlCacheRef = useRef(new Map());
 
   const opts = {
     height: '0',
@@ -232,85 +237,175 @@ const Player = () => {
     }
   }, [player, skipToNext]);
 
-  const fetchAudioUrl = async (videoId) => {
-    try {
-      const response = await axios.get(`${process.env.REACT_APP_API_URL}/api/youtube/stream/${videoId}`);
-      return response.data.url;
-    } catch (error) {
-      console.error('Error fetching audio URL:', error);
-      return null;
-    }
-  };
-
-  // Pre-fetch next song URL
+  // Initialize Web Worker
   useEffect(() => {
-    const preloadNextTrack = async () => {
-      if (currentIndex < queue.length - 1) {
-        const nextTrack = queue[currentIndex + 1];
-        if (nextTrack && nextTrack.videoId) {
-          const url = await fetchAudioUrl(nextTrack.videoId);
-          setNextAudioUrl(url);
+    audioWorkerRef.current = new Worker(new URL('../workers/audioFetcher.js', import.meta.url), {
+      type: 'module'
+    });
+    
+    audioWorkerRef.current.onmessage = (event) => {
+      const { type, url, error } = event.data;
+      if (type === 'SUCCESS' && url) {
+        setAudioUrl(url);
+        // Cache the URL for future use
+        if (currentTrack?.videoId) {
+          audioUrlCacheRef.current.set(currentTrack.videoId, url);
         }
+      } else if (type === 'ERROR') {
+        console.error('Audio fetch error:', error);
       }
     };
 
-    preloadNextTrack();
-  }, [currentIndex, queue]);
+    return () => audioWorkerRef.current?.terminate();
+  }, []);
 
-  // Handle song ended event
+  const fetchAudioUrl = useCallback(async (videoId) => {
+    audioWorkerRef.current?.postMessage({
+      videoId,
+      apiUrl: process.env.REACT_APP_API_URL
+    });
+  }, []);
+
+  const preloadNextTrack = useCallback(async () => {
+    if (fetchingRef.current) return;
+    
+    if (currentIndex < queue.length - 1) {
+      const nextTrack = queue[currentIndex + 1];
+      if (nextTrack?.videoId) {
+        fetchingRef.current = true;
+        await fetchAudioUrl(nextTrack.videoId);
+        fetchingRef.current = false;
+      }
+    }
+  }, [currentIndex, queue, fetchAudioUrl]);
+
+  // Enhanced audio handling with background support
   useEffect(() => {
     if (!audioRef.current) return;
 
-    const handleEnded = async () => {
-      if (currentIndex < queue.length - 1) {
-        const nextIndex = currentIndex + 1;
-        const nextTrack = queue[nextIndex];
-        
-        // Use pre-fetched URL
-        if (nextAudioUrl) {
-          setAudioUrl(nextAudioUrl);
-          setNextAudioUrl(null);
-          setCurrentTrack(nextTrack);
-          setCurrentIndex(nextIndex);
-          setIsPlaying(true);
-          
-          // Ensure audio plays in background
-          if (audioRef.current) {
-            const playPromise = audioRef.current.play();
-            if (playPromise !== undefined) {
-              playPromise.catch(error => {
-                console.error("Playback failed:", error);
-              });
+    let isPreloading = false;
+
+    const handleTimeUpdate = async () => {
+      if (!audioRef.current) return;
+      
+      const currentTime = audioRef.current.currentTime;
+      const duration = audioRef.current.duration;
+      
+      setCurrentTime(currentTime);
+      setDuration(duration);
+
+      // Update media session
+      if ('mediaSession' in navigator) {
+        navigator.mediaSession.setPositionState({
+          duration,
+          playbackRate: 1,
+          position: currentTime
+        });
+      }
+
+      // Preload next track at 80%
+      if (!isPreloading && duration > 0 && (currentTime / duration) > 0.8) {
+        isPreloading = true;
+        if (currentIndex < queue.length - 1) {
+          const nextTrack = queue[currentIndex + 1];
+          if (nextTrack?.videoId) {
+            const nextUrl = await fetchAudioUrl(nextTrack.videoId);
+            if (nextUrl) {
+              await audioContext.preloadNext(nextUrl);
             }
           }
         }
       }
     };
 
+    const handleEnded = async () => {
+      if (currentIndex < queue.length - 1) {
+        const nextIndex = currentIndex + 1;
+        const nextTrack = queue[nextIndex];
+        
+        if (audioContext.nextBuffer) {
+          setCurrentTrack(nextTrack);
+          setCurrentIndex(nextIndex);
+          setIsPlaying(true);
+          
+          audioContext.play(audioContext.nextBuffer);
+          audioContext.nextBuffer = null;
+          isPreloading = false;
+        } else {
+          const nextUrl = await fetchAudioUrl(nextTrack.videoId);
+          if (nextUrl) {
+            const buffer = await audioContext.loadAudio(nextUrl);
+            if (buffer) {
+              setCurrentTrack(nextTrack);
+              setCurrentIndex(nextIndex);
+              setIsPlaying(true);
+              audioContext.play(buffer);
+            }
+          }
+        }
+      }
+    };
+
+    audioRef.current.addEventListener('timeupdate', handleTimeUpdate);
     audioRef.current.addEventListener('ended', handleEnded);
+
     return () => {
       if (audioRef.current) {
+        audioRef.current.removeEventListener('timeupdate', handleTimeUpdate);
         audioRef.current.removeEventListener('ended', handleEnded);
       }
     };
-  }, [currentIndex, queue, nextAudioUrl, setCurrentTrack, setCurrentIndex, setIsPlaying]);
+  }, [currentIndex, queue, setCurrentTrack, setCurrentIndex, setIsPlaying, fetchAudioUrl]);
 
-  // Update audio source when URL changes
+  // Update volume handling
   useEffect(() => {
-    if (audioRef.current && audioUrl) {
-      audioRef.current.src = audioUrl;
-      if (isPlaying) {
-        audioRef.current.play();
+    audioContext.setVolume(volume / 100);
+  }, [volume]);
+
+  // Handle page visibility changes
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (!document.hidden && audioRef.current) {
+        if (isPlaying && audioRef.current.paused) {
+          audioRef.current.play();
+        }
       }
-    }
-  }, [audioUrl, isPlaying]);
+    };
+    
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [isPlaying]);
 
-  // Initial load of current track
+  // Add Media Session setup
   useEffect(() => {
-    if (currentTrack?.videoId) {
-      fetchAudioUrl(currentTrack.videoId).then(url => setAudioUrl(url));
+    if (player && currentSong) {
+      setupMediaSession(player, {
+        play: () => {
+          player.playVideo();
+          setIsPlaying(true);
+        },
+        pause: () => {
+          player.pauseVideo();
+          setIsPlaying(false);
+        },
+        next: skipToNext,
+        previous: skipToPrevious,
+        seekTo: (details) => {
+          if (details.seekTime !== undefined) {
+            player.seekTo(details.seekTime, true);
+          }
+        }
+      });
+
+      // Update metadata when song changes
+      updateMediaSessionMetadata(currentSong);
     }
-  }, [currentTrack]);
+  }, [player, currentSong, skipToNext, skipToPrevious]);
+
+  // Update playback state
+  useEffect(() => {
+    updatePlaybackState(isPlaying ? 'playing' : 'paused');
+  }, [isPlaying]);
 
   if (error) {
     return (
@@ -444,7 +539,7 @@ const Player = () => {
             setError(null);
           } else if (e.data === 2) {
             setIsPlaying(false);
-          } else if (e.data === 0) { // Video ended
+          } else if (e.data === 0) {
             skipToNext();
           }
         }}
