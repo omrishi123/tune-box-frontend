@@ -117,7 +117,6 @@ const Player = () => {
 
   const skipToNext = useCallback((e) => {
     if (e) e.stopPropagation();
-    // Calculate next index and song outside the updater
     const nextIndex = currentIndex + 1;
     if (queue && nextIndex < queue.length) {
       const nextSong = queue[nextIndex];
@@ -303,7 +302,7 @@ const Player = () => {
       }
     };
 
-    const handleEnded = async () => {
+    const handleEnded = () => {
       const nextIndex = currentIndex + 1;
       if (queue && nextIndex < queue.length) {
         const nextTrack = queue[nextIndex];
@@ -311,7 +310,6 @@ const Player = () => {
         setCurrentSong(nextTrack);
         setCurrentTrack(nextTrack);
         setIsPlaying(true);
-        // ...existing audio logic if needed...
       }
     };
 
@@ -443,6 +441,21 @@ const Player = () => {
           icon: currentSong?.thumbnail
         });
       }
+    }
+  };
+
+  // Example function to use in your playlist list component (not inside Player.js)
+  const handleOpenPlaylist = (playlist) => {
+    if (playlist.songs && playlist.songs.length > 0) {
+      // Set the queue and current song atomically
+      setCurrentIndex(0);
+      setCurrentSong(playlist.songs[0]);
+      setCurrentTrack(playlist.songs[0]);
+      setIsPlaying(true);
+      setQueue(playlist.songs);
+      // Optionally, navigate to the player view if needed
+    } else {
+      alert('This playlist is empty.');
     }
   };
 
