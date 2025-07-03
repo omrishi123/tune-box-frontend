@@ -61,6 +61,8 @@ const Player = () => {
   const audioUrlCacheRef = useRef(new Map());
   const [backgroundMode, setBackgroundMode] = useState(false);
   const backgroundPlaybackRef = useRef(false);
+  const [queuedTracks, setQueuedTracks] = useState([]);
+  const queueManagerRef = useRef(null);
 
   const opts = {
     height: '0',
@@ -115,13 +117,23 @@ const Player = () => {
 
   const skipToNext = useCallback((e) => {
     if (e) e.stopPropagation();
-    const currentIndex = queue.findIndex(song => song.id === currentSong?.id);
-    if (currentIndex > -1 && currentIndex < queue.length - 1) {
+    if (currentIndex < queue.length - 1) {
       const nextSong = queue[currentIndex + 1];
       setCurrentSong(nextSong);
       setIsPlaying(true);
+
+      if (backgroundMode) {
+        const remainingTracks = queue.slice(currentIndex + 2);
+        setQueuedTracks(remainingTracks);
+        // Pre-fetch next tracks
+        remainingTracks.slice(0, 3).forEach(track => {
+          if (track?.videoId) {
+            fetchAudioUrl(track.videoId);
+          }
+        });
+      }
     }
-  }, [queue, currentSong, setCurrentSong, setIsPlaying]);
+  }, [queue, currentIndex, setCurrentSong, setIsPlaying, backgroundMode]);
 
   const skipToPrevious = useCallback((e) => {
     if (e) e.stopPropagation();
@@ -304,21 +316,32 @@ const Player = () => {
         const nextTrack = queue[nextIndex];
         
         try {
-          // Force immediate loading of next track
-          const nextUrl = await fetchAudioUrl(nextTrack.videoId);
+          let nextUrl = audioUrlCacheRef.current.get(nextTrack.videoId);
+          
+          if (!nextUrl) {
+            // Force immediate loading if URL not cached
+            nextUrl = await fetchAudioUrl(nextTrack.videoId);
+          }
+
           if (nextUrl) {
             setCurrentTrack(nextTrack);
             setCurrentIndex(nextIndex);
             setIsPlaying(true);
-            setAudioUrl(nextUrl);
             
             if (audioRef.current) {
               audioRef.current.src = nextUrl;
-              const playPromise = audioRef.current.play();
-              if (playPromise) {
-                await playPromise;
-                preloadNextTrack();
-              }
+              await audioRef.current.play();
+              
+              // Update queue and pre-fetch next tracks
+              const remainingTracks = queue.slice(nextIndex + 1);
+              setQueuedTracks(remainingTracks);
+              
+              // Pre-fetch next few tracks
+              remainingTracks.slice(0, 3).forEach(track => {
+                if (track?.videoId) {
+                  fetchAudioUrl(track.videoId);
+                }
+              });
             }
           }
         } catch (error) {
@@ -330,13 +353,15 @@ const Player = () => {
     audioRef.current.addEventListener('timeupdate', handleTimeUpdate);
     audioRef.current.addEventListener('ended', handleEnded);
 
+    // Add cleanup
     return () => {
       if (audioRef.current) {
         audioRef.current.removeEventListener('timeupdate', handleTimeUpdate);
         audioRef.current.removeEventListener('ended', handleEnded);
       }
+      setQueuedTracks([]);
     };
-  }, [currentIndex, queue, setCurrentTrack, setCurrentIndex, setIsPlaying, preloadNextTrack, fetchAudioUrl, backgroundMode]);
+  }, [currentIndex, queue, setCurrentTrack, setCurrentIndex, setIsPlaying, fetchAudioUrl, backgroundMode]);
 
   // Handle page visibility changes
   useEffect(() => {
@@ -366,6 +391,70 @@ const Player = () => {
     }
   }, [backgroundMode]);
 
+  // Media Session API integration for background/system controls
+  useEffect(() => {
+    if (!currentSong) return;
+    if ('mediaSession' in navigator) {
+      navigator.mediaSession.metadata = new window.MediaMetadata({
+        title: currentSong.title,
+        artist: currentSong.artist,
+        album: '',
+        artwork: [
+          { src: currentSong.thumbnail, sizes: '512x512', type: 'image/jpeg' }
+        ]
+      });
+
+      navigator.mediaSession.setActionHandler('play', () => {
+        player?.playVideo();
+        setIsPlaying(true);
+      });
+      navigator.mediaSession.setActionHandler('pause', () => {
+        player?.pauseVideo();
+        setIsPlaying(false);
+      });
+      navigator.mediaSession.setActionHandler('previoustrack', skipToPrevious);
+      navigator.mediaSession.setActionHandler('nexttrack', skipToNext);
+      navigator.mediaSession.setActionHandler('seekbackward', (details) => {
+        const seekTime = player?.getCurrentTime() - (details.seekOffset || 10);
+        player?.seekTo(seekTime > 0 ? seekTime : 0, true);
+      });
+      navigator.mediaSession.setActionHandler('seekforward', (details) => {
+        const seekTime = player?.getCurrentTime() + (details.seekOffset || 10);
+        player?.seekTo(seekTime, true);
+      });
+      navigator.mediaSession.setActionHandler('seekto', (details) => {
+        if (details.seekTime !== undefined) {
+          player?.seekTo(details.seekTime, true);
+        }
+      });
+    }
+  }, [currentSong, player, skipToNext, skipToPrevious, setIsPlaying]);
+
+  // Update playback state for Media Session API
+  useEffect(() => {
+    if ('mediaSession' in navigator) {
+      navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused';
+    }
+  }, [isPlaying]);
+
+  // Update position state regularly for lock screen controls
+  useEffect(() => {
+    if (!player || !('mediaSession' in navigator)) return;
+    let interval;
+    if (isPlaying) {
+      interval = setInterval(() => {
+        try {
+          navigator.mediaSession.setPositionState({
+            duration: player.getDuration(),
+            playbackRate: 1,
+            position: player.getCurrentTime()
+          });
+        } catch {}
+      }, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [isPlaying, player]);
+
   if (error) {
     return (
       <PlayerWrapper>
@@ -380,6 +469,16 @@ const Player = () => {
   const toggleBackgroundMode = (e) => {
     e.stopPropagation();
     setBackgroundMode(!backgroundMode);
+    
+    if (!backgroundMode) {
+      // Show notification when enabling background mode
+      if ('Notification' in window && Notification.permission === 'granted') {
+        new Notification('Background Playback Enabled', {
+          body: 'Music will continue playing in background',
+          icon: currentSong?.thumbnail
+        });
+      }
+    }
   };
 
   return (
