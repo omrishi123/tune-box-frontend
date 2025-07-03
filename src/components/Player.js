@@ -117,23 +117,28 @@ const Player = () => {
 
   const skipToNext = useCallback((e) => {
     if (e) e.stopPropagation();
-    if (currentIndex < queue.length - 1) {
-      const nextSong = queue[currentIndex + 1];
-      setCurrentSong(nextSong);
-      setIsPlaying(true);
+    // Always use the latest index and queue
+    setCurrentIndex(prevIndex => {
+      const nextIndex = prevIndex + 1;
+      if (nextIndex < queue.length) {
+        const nextSong = queue[nextIndex];
+        setCurrentSong(nextSong);
+        setCurrentTrack(nextSong);
+        setIsPlaying(true);
 
-      if (backgroundMode) {
-        const remainingTracks = queue.slice(currentIndex + 2);
-        setQueuedTracks(remainingTracks);
-        // Pre-fetch next tracks
-        remainingTracks.slice(0, 3).forEach(track => {
-          if (track?.videoId) {
-            fetchAudioUrl(track.videoId);
-          }
-        });
+        // Pre-fetch next tracks if backgroundMode
+        if (backgroundMode) {
+          const remainingTracks = queue.slice(nextIndex + 1);
+          setQueuedTracks(remainingTracks);
+          remainingTracks.slice(0, 3).forEach(track => {
+            if (track?.videoId) fetchAudioUrl(track.videoId);
+          });
+        }
+        return nextIndex;
       }
-    }
-  }, [queue, currentIndex, setCurrentSong, setIsPlaying, backgroundMode]);
+      return prevIndex; // No change if at end of queue
+    });
+  }, [queue, setCurrentSong, setCurrentTrack, setIsPlaying, backgroundMode, fetchAudioUrl]);
 
   const skipToPrevious = useCallback((e) => {
     if (e) e.stopPropagation();
@@ -311,43 +316,34 @@ const Player = () => {
     };
 
     const handleEnded = async () => {
-      if (currentIndex < queue.length - 1 && (backgroundMode || !document.hidden)) {
-        const nextIndex = currentIndex + 1;
-        const nextTrack = queue[nextIndex];
-        
-        try {
-          let nextUrl = audioUrlCacheRef.current.get(nextTrack.videoId);
-          
-          if (!nextUrl) {
-            // Force immediate loading if URL not cached
-            nextUrl = await fetchAudioUrl(nextTrack.videoId);
-          }
-
-          if (nextUrl) {
-            setCurrentTrack(nextTrack);
-            setCurrentIndex(nextIndex);
-            setIsPlaying(true);
-            
-            if (audioRef.current) {
-              audioRef.current.src = nextUrl;
-              await audioRef.current.play();
-              
-              // Update queue and pre-fetch next tracks
-              const remainingTracks = queue.slice(nextIndex + 1);
-              setQueuedTracks(remainingTracks);
-              
-              // Pre-fetch next few tracks
-              remainingTracks.slice(0, 3).forEach(track => {
-                if (track?.videoId) {
-                  fetchAudioUrl(track.videoId);
-                }
-              });
+      setCurrentIndex(prevIndex => {
+        const nextIndex = prevIndex + 1;
+        if (nextIndex < queue.length && (backgroundMode || !document.hidden)) {
+          const nextTrack = queue[nextIndex];
+          (async () => {
+            let nextUrl = audioUrlCacheRef.current.get(nextTrack.videoId);
+            if (!nextUrl) {
+              nextUrl = await fetchAudioUrl(nextTrack.videoId);
             }
-          }
-        } catch (error) {
-          console.error("Playback failed:", error);
+            if (nextUrl) {
+              setCurrentSong(nextTrack);
+              setCurrentTrack(nextTrack);
+              setIsPlaying(true);
+              if (audioRef.current) {
+                audioRef.current.src = nextUrl;
+                await audioRef.current.play();
+                const remainingTracks = queue.slice(nextIndex + 1);
+                setQueuedTracks(remainingTracks);
+                remainingTracks.slice(0, 3).forEach(track => {
+                  if (track?.videoId) fetchAudioUrl(track.videoId);
+                });
+              }
+            }
+          })();
+          return nextIndex;
         }
-      }
+        return prevIndex;
+      });
     };
 
     audioRef.current.addEventListener('timeupdate', handleTimeUpdate);
@@ -361,7 +357,7 @@ const Player = () => {
       }
       setQueuedTracks([]);
     };
-  }, [currentIndex, queue, setCurrentTrack, setCurrentIndex, setIsPlaying, fetchAudioUrl, backgroundMode]);
+  }, [queue, setCurrentSong, setCurrentTrack, setCurrentIndex, setIsPlaying, fetchAudioUrl, backgroundMode]);
 
   // Handle page visibility changes
   useEffect(() => {
@@ -626,3 +622,4 @@ const Player = () => {
 };
 
 export default Player;
+
