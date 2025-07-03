@@ -287,18 +287,31 @@ const Player = () => {
   useEffect(() => {
     if (!audioRef.current) return;
 
+    let pauseTimeout = null;
+
     const handleTimeUpdate = () => {
       if (!audioRef.current) return;
-      
+
       const currentTime = audioRef.current.currentTime;
       const duration = audioRef.current.duration;
-      
+
       setCurrentTime(currentTime);
       setDuration(duration);
 
       // Start preloading at 80% of current track
       if (duration > 0 && (currentTime / duration) > 0.8) {
         preloadNextTrack();
+      }
+
+      // Fix: If audio pauses unexpectedly in background, try to resume
+      if (isPlaying && audioRef.current.paused) {
+        // Try to resume after a short delay (browser may throttle, so use a timeout)
+        clearTimeout(pauseTimeout);
+        pauseTimeout = setTimeout(() => {
+          if (isPlaying && audioRef.current && audioRef.current.paused) {
+            audioRef.current.play().catch(() => {});
+          }
+        }, 500);
       }
     };
 
@@ -310,6 +323,15 @@ const Player = () => {
         setCurrentSong(nextTrack);
         setCurrentTrack(nextTrack);
         setIsPlaying(true);
+
+        // Fix: Always set audio src and play for next track in background
+        if (audioUrlCacheRef.current.has(nextTrack.videoId)) {
+          const nextUrl = audioUrlCacheRef.current.get(nextTrack.videoId);
+          if (audioRef.current && nextUrl) {
+            audioRef.current.src = nextUrl;
+            audioRef.current.play().catch(() => {});
+          }
+        }
       }
     };
 
@@ -322,9 +344,19 @@ const Player = () => {
         audioRef.current.removeEventListener('timeupdate', handleTimeUpdate);
         audioRef.current.removeEventListener('ended', handleEnded);
       }
+      clearTimeout(pauseTimeout);
       setQueuedTracks([]);
     };
-  }, [currentIndex, queue, setCurrentTrack, setCurrentIndex, setIsPlaying, fetchAudioUrl, backgroundMode]);
+  }, [
+    currentIndex,
+    queue,
+    setCurrentTrack,
+    setCurrentIndex,
+    setIsPlaying,
+    fetchAudioUrl,
+    backgroundMode,
+    isPlaying,
+  ]);
 
   // Handle page visibility changes
   useEffect(() => {
