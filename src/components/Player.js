@@ -333,12 +333,23 @@ const Player = () => {
         if (isPlaying && audioRef.current.paused) {
           audioRef.current.play();
         }
+        // Try to resume YouTube player if needed
+        if (isPlaying && player && typeof player.playVideo === 'function') {
+          player.playVideo();
+        }
+        // Optionally, show a notification to user
+        if (document.hidden && 'Notification' in window && Notification.permission === 'granted') {
+          new Notification('TuneBox', {
+            body: 'For uninterrupted playback, keep TuneBox in the foreground.',
+            icon: currentSong?.thumbnail
+          });
+        }
       }
     };
     
     document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-  }, [isPlaying]);
+  }, [isPlaying, player, currentSong]);
 
   useEffect(() => {
     if (backgroundMode) {
