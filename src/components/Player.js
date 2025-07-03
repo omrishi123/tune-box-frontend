@@ -47,7 +47,7 @@ const Player = () => {
   const [expanded, setExpanded] = useState(false);
   const [duration, setDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
-  const [queue] = useRecoilState(queueState); // Only keep if you're using queue
+  const [queue, setQueue] = useRecoilState(queueState); // <-- add setQueue here
   const [anchorEl, setAnchorEl] = useState(null);
   const [playlists, setPlaylists] = useState([]);
   const { isMobile } = useResponsive();
@@ -447,12 +447,11 @@ const Player = () => {
   // Example function to use in your playlist list component (not inside Player.js)
   const handleOpenPlaylist = (playlist) => {
     if (playlist.songs && playlist.songs.length > 0) {
-      // Set the queue and current song atomically
       setCurrentIndex(0);
       setCurrentSong(playlist.songs[0]);
       setCurrentTrack(playlist.songs[0]);
       setIsPlaying(true);
-      setQueue(playlist.songs);
+      setQueue(playlist.songs); // <-- setQueue is now defined
       // Optionally, navigate to the player view if needed
     } else {
       alert('This playlist is empty.');
@@ -601,4 +600,5 @@ const Player = () => {
       <audio ref={audioRef} />
     </>
   );
-};export default Player;
+};
+export default Player;
