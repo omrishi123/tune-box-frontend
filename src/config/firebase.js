@@ -30,3 +30,15 @@ Promise.all([
 });
 
 export { auth, db };
+
+export const isGuestUser = () => {
+  return localStorage.getItem('isGuest') === 'true';
+};
+
+// Modify your existing functions to check for guest mode
+export const saveToHistory = async (song) => {
+  if (isGuestUser()) return; // Skip for guest users
+  // ...existing saveToHistory implementation...
+};
+
+// Similarly modify other firestore operations to skip for guest users

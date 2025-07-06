@@ -52,6 +52,12 @@ const LoginForm = () => {
     }
   };
 
+  const handleGuestLogin = () => {
+    // Set guest user state
+    localStorage.setItem('isGuest', 'true');
+    window.location.reload(); // Refresh to apply guest state
+  };
+
   return (
     <LoginContainer>
       <Typography variant="h4" gutterBottom>
@@ -93,6 +99,14 @@ const LoginForm = () => {
             style={{ marginTop: 16 }}
           >
             Sign in with Google
+          </Button>
+          <Button 
+            fullWidth
+            variant="outlined" 
+            onClick={handleGuestLogin}
+            style={{ marginTop: 16 }}
+          >
+            Continue as Guest
           </Button>
         </form>
       </FormContainer>

@@ -31,6 +31,15 @@ function App() {
   const { isMobile } = useResponsive();
 
   useEffect(() => {
+    // Check for guest mode first
+    const isGuest = localStorage.getItem('isGuest') === 'true';
+    if (isGuest) {
+      setUser({ isGuest: true });
+      setLoading(false);
+      setAuthInitialized(true);
+      return;
+    }
+
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       setUser(user);
       setAuthInitialized(true);

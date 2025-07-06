@@ -9,7 +9,6 @@ import { formatTime } from '../utils/formatTime';
 import { db, auth } from '../config/firebase';
 import { collection, addDoc, serverTimestamp, onSnapshot, doc, updateDoc, arrayUnion } from 'firebase/firestore';
 import useResponsive from '../hooks/useResponsive';
-import axios from 'axios';
 
 const PlayerWrapper = styled.div`
   position: fixed;
@@ -43,7 +42,6 @@ const Player = () => {
   const [currentSong, setCurrentSong] = useRecoilState(currentSongState);
   const [isPlaying, setIsPlaying] = useRecoilState(playbackState);
   const [volume, setVolume] = useState(100);
-  const [error, setError] = useState(null);
   const [expanded, setExpanded] = useState(false);
   const [duration, setDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
@@ -54,15 +52,12 @@ const Player = () => {
   const audioRef = useRef(null);
   const [currentTrack, setCurrentTrack] = useRecoilState(currentTrackState);
   const [currentIndex, setCurrentIndex] = useRecoilState(currentIndexState);
-  const [audioUrl, setAudioUrl] = useState(null);
-  const nextTrackUrlRef = useRef(null);
   const fetchingRef = useRef(false);
   const audioWorkerRef = useRef(null);
   const audioUrlCacheRef = useRef(new Map());
   const [backgroundMode, setBackgroundMode] = useState(false);
   const backgroundPlaybackRef = useRef(false);
   const [queuedTracks, setQueuedTracks] = useState([]);
-  const queueManagerRef = useRef(null);
 
   const opts = {
     height: '0',
@@ -86,7 +81,6 @@ const Player = () => {
 
   const onError = (event) => {
     console.error("YouTube Player Error:", event);
-    setError("Failed to load video");
   };
 
   const togglePlayPause = useCallback(() => {
@@ -250,7 +244,6 @@ const Player = () => {
     audioWorkerRef.current.onmessage = (event) => {
       const { type, url, error } = event.data;
       if (type === 'SUCCESS' && url) {
-        setAudioUrl(url);
         // Cache the URL for future use
         if (currentTrack?.videoId) {
           audioUrlCacheRef.current.set(currentTrack.videoId, url);
@@ -461,14 +454,6 @@ const Player = () => {
     return () => clearInterval(interval);
   }, [isPlaying, player]);
 
-  if (error) {
-    return (
-      <PlayerWrapper>
-        <Typography color="error">{error}</Typography>
-      </PlayerWrapper>
-    );
-  }
-
   if (!currentSong) return null;
 
   // Add background mode toggle
@@ -631,7 +616,6 @@ const Player = () => {
         onStateChange={(e) => {
           if (e.data === 1) {
             setIsPlaying(true);
-            setError(null);
           } else if (e.data === 2) {
             setIsPlaying(false);
           } else if (e.data === 0) {
